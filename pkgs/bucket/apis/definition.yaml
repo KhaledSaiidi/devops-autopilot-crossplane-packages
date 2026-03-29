@@ -1,0 +1,99 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: CompositeResourceDefinition
+metadata:
+  name: xbuckets.devops-autopilot-crossplane-packages.io
+spec:
+  defaultCompositeDeletePolicy: Foreground
+  group: devops-autopilot-crossplane-packages.io
+  names:
+    kind: XBucket
+    plural: xbuckets
+  claimNames:
+    kind: Bucket
+    plural: buckets
+  versions:
+    - name: v1alpha1
+      served: true
+      referenceable: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                managementPolicies:
+                  type: array
+                  default: 
+                   - "*"
+                  description: |-
+                    Management actions that the Crossplane controllers
+                    can take on the external resource.
+                  items:
+                    description: |-
+                      Management actions that the Crossplane controllers
+                      can take on the external resource.
+                    enum:
+                      - Observe
+                      - Create
+                      - Update
+                      - Delete
+                      - LateInitialize
+                      - "*"
+                    type: string
+                parameters:
+                  type: object
+                  properties:
+                    provider:
+                      default: "aws"
+                      description: Cloud provider to use for this bucket
+                      type: string
+                      enum:
+                        - "aws"
+                        - "azure"
+                    namePrefix:
+                      description: Prefix used to generate the bucket name
+                      type: string
+                    region:
+                      description: Region where the bucket will be created
+                      type: string
+                    storageEncrypted:
+                      description: Whether storage encryption is enabled
+                      type: boolean
+                      default: true
+                    versioning:
+                      type: boolean
+                      description: Whether versioning is enabled for the bucket.
+                      default: false
+                    publishConfig:
+                      type: object
+                      description: Configuration for publishing bucket metadata for consumers.
+                      properties:
+                        enabled:
+                          type: boolean
+                          default: true
+                        namespace:
+                          type: string
+                          description: Namespace where the ConfigMap will be created.
+                        name:
+                          type: string
+                          description: Name of the ConfigMap to create.
+                      x-kubernetes-validations:
+                        - rule: "has(self.namespace)"
+                          message: "publishConfig.namespace is required when publishConfig is set."
+                    tags:
+                      type: object
+                      description: Tags to apply to the underlying cloud resources.
+                      additionalProperties:
+                        type: string
+                    publicAccess:
+                      type: boolean
+                      description: Whether public access is allowed.
+                      default: false
+                  required:
+                    - namePrefix
+                    - region
+              required:
+                - parameters
+          required:
+            - spec
