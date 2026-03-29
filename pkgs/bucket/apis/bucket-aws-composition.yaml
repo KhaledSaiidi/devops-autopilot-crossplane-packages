@@ -160,7 +160,6 @@ spec:
                       namespace: default
                       name: bucket-config
                     data:
-                      provider: aws
                       bucketName: ""
                       region: ""
                       containerName: ""

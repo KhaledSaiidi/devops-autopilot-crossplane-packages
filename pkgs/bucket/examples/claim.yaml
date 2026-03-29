@@ -1,9 +1,0 @@
-apiVersion: cfg.example.org/v1alpha1
-kind: CfgResource
-metadata:
-  namespace: default
-  name: simple-example
-spec:
-  data: "I'm cool!"
-  compositionRef:
-    name: cfg-composition

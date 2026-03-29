@@ -5,6 +5,8 @@ metadata:
 spec:
   defaultCompositeDeletePolicy: Foreground
   group: devops-autopilot-crossplane-packages.io
+  defaultCompositionRef:
+    name: bucket-aws-composition
   names:
     kind: XBucket
     plural: xbuckets
@@ -44,19 +46,16 @@ spec:
                 parameters:
                   type: object
                   properties:
-                    provider:
-                      type: string
-                      default: "aws"
-                      description: Cloud provider to use for this bucket
-                      enum:
-                        - "aws"
-                        - "azure"
                     namePrefix:
                       type: string
                       description: Prefix used to generate the bucket name
                     region:
                       type: string
                       description: Region where the bucket will be created
+                    resourceGroupName:
+                      type: string
+                      description: Azure resource group name (for Azure provider)
+                      default: default-rg
                     storageEncrypted:
                       type: boolean
                       default: true
