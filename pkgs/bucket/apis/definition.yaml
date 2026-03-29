@@ -24,12 +24,13 @@ spec:
               properties:
                 managementPolicies:
                   type: array
-                  default: 
-                   - "*"
+                  default:
+                    - "*"
                   description: |-
                     Management actions that the Crossplane controllers
                     can take on the external resource.
                   items:
+                    type: string
                     description: |-
                       Management actions that the Crossplane controllers
                       can take on the external resource.
@@ -40,60 +41,73 @@ spec:
                       - Delete
                       - LateInitialize
                       - "*"
-                    type: string
                 parameters:
                   type: object
                   properties:
                     provider:
+                      type: string
                       default: "aws"
                       description: Cloud provider to use for this bucket
-                      type: string
                       enum:
                         - "aws"
                         - "azure"
                     namePrefix:
+                      type: string
                       description: Prefix used to generate the bucket name
-                      type: string
                     region:
-                      description: Region where the bucket will be created
                       type: string
+                      description: Region where the bucket will be created
                     storageEncrypted:
-                      description: Whether storage encryption is enabled
                       type: boolean
                       default: true
+                      description: Whether storage encryption is enabled
                     versioning:
                       type: boolean
-                      description: Whether versioning is enabled for the bucket.
                       default: false
+                      description: Whether versioning is enabled for the bucket
                     publishConfig:
                       type: object
-                      description: Configuration for publishing bucket metadata for consumers.
+                      description: Configuration for publishing bucket metadata for consumers
                       properties:
-                        enabled:
-                          type: boolean
-                          default: true
                         namespace:
                           type: string
-                          description: Namespace where the ConfigMap will be created.
+                          description: Namespace where the ConfigMap will be created
                         name:
                           type: string
-                          description: Name of the ConfigMap to create.
-                      x-kubernetes-validations:
-                        - rule: "has(self.namespace)"
-                          message: "publishConfig.namespace is required when publishConfig is set."
+                          description: Name of the ConfigMap to create
+                      required:
+                        - namespace
                     tags:
                       type: object
-                      description: Tags to apply to the underlying cloud resources.
+                      description: Tags to apply to the underlying cloud resources
                       additionalProperties:
                         type: string
                     publicAccess:
                       type: boolean
-                      description: Whether public access is allowed.
                       default: false
+                      description: Whether public access is allowed
+                    cloudProviderConfigRef:
+                      type: string
+                      description: Reference to the provider config to use for this bucket
+                    cmProviderConfigRef:
+                      type: string
+                      description: Reference to the provider config to use for the generated ConfigMap
                   required:
                     - namePrefix
                     - region
+                    - cloudProviderConfigRef
+                    - cmProviderConfigRef
+                    - publishConfig
               required:
                 - parameters
+            status:
+              type: object
+              properties:
+                bucketName:
+                  type: string
+                  description: Actual bucket name used by the composed AWS bucket.
+                endpoint:
+                  type: string
+                  description: Computed S3 endpoint URL for the bucket.    
           required:
             - spec

@@ -1,0 +1,201 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: bucket-aws-composition
+  labels:
+    crossplane.io/xrd: xbuckets.devops-autopilot-crossplane-packages.io
+    provider: aws
+spec:
+  compositeTypeRef:
+    apiVersion: devops-autopilot-crossplane-packages.io/v1alpha1
+    kind: XBucket
+
+  mode: Pipeline
+  pipeline:
+    - step: patch-and-transform
+      functionRef:
+        name: function-patch-and-transform
+      input:
+        apiVersion: pt.fn.crossplane.io/v1beta1
+        kind: Resources
+        resources:
+          - name: aws-bucket
+            base:
+              apiVersion: s3.aws.upbound.io/v1beta1
+              kind: Bucket
+              spec:
+                forProvider: {}
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.namePrefix
+                toFieldPath: spec.forProvider.bucket
+
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.region
+                toFieldPath: spec.forProvider.region
+
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.tags
+                toFieldPath: spec.forProvider.tags
+                policy:
+                  fromFieldPath: Optional
+
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.cloudProviderConfigRef
+                toFieldPath: spec.providerConfigRef.name
+
+              - type: ToCompositeFieldPath
+                fromFieldPath: spec.forProvider.bucket
+                toFieldPath: status.bucketName
+
+          - name: aws-bucket-versioning
+            base:
+              apiVersion: s3.aws.upbound.io/v1beta1
+              kind: BucketVersioning
+              spec:
+                forProvider:
+                  bucketSelector:
+                    matchControllerRef: true
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.region
+                toFieldPath: spec.forProvider.region
+
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.versioning
+                toFieldPath: spec.forProvider.versioningConfiguration.status
+                transforms:
+                  - type: map
+                    map:
+                      "true": Enabled
+                      "false": Suspended
+
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.cloudProviderConfigRef
+                toFieldPath: spec.providerConfigRef.name
+
+          - name: aws-bucket-public-access-block
+            base:
+              apiVersion: s3.aws.upbound.io/v1beta1
+              kind: BucketPublicAccessBlock
+              spec:
+                forProvider:
+                  bucketSelector:
+                    matchControllerRef: true
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.region
+                toFieldPath: spec.forProvider.region
+
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.publicAccess
+                toFieldPath: spec.forProvider.blockPublicAcls
+                transforms:
+                  - type: map
+                    map:
+                      "true": false
+                      "false": true
+
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.publicAccess
+                toFieldPath: spec.forProvider.blockPublicPolicy
+                transforms:
+                  - type: map
+                    map:
+                      "true": false
+                      "false": true
+
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.publicAccess
+                toFieldPath: spec.forProvider.ignorePublicAcls
+                transforms:
+                  - type: map
+                    map:
+                      "true": false
+                      "false": true
+
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.publicAccess
+                toFieldPath: spec.forProvider.restrictPublicBuckets
+                transforms:
+                  - type: map
+                    map:
+                      "true": false
+                      "false": true
+
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.cloudProviderConfigRef
+                toFieldPath: spec.providerConfigRef.name
+
+          - name: aws-bucket-encryption
+            base:
+              apiVersion: s3.aws.upbound.io/v1beta1
+              kind: BucketServerSideEncryptionConfiguration
+              spec:
+                forProvider:
+                  bucketSelector:
+                    matchControllerRef: true
+                  rule:
+                    - applyServerSideEncryptionByDefault:
+                        - sseAlgorithm: AES256
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.region
+                toFieldPath: spec.forProvider.region
+
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.cloudProviderConfigRef
+                toFieldPath: spec.providerConfigRef.name
+
+          - name: bucket-configmap
+            base:
+              apiVersion: kubernetes.crossplane.io/v1alpha2
+              kind: Object
+              spec:
+                forProvider:
+                  manifest:
+                    apiVersion: v1
+                    kind: ConfigMap
+                    metadata:
+                      namespace: default
+                      name: bucket-config
+                    data:
+                      provider: aws
+                      bucketName: ""
+                      region: ""
+                      containerName: ""
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.publishConfig.namespace
+                toFieldPath: spec.forProvider.manifest.metadata.namespace
+
+              - type: CombineFromComposite
+                toFieldPath: spec.forProvider.manifest.metadata.name
+                combine:
+                  strategy: string
+                  string:
+                    fmt: "bucket-%s-config"
+                  variables:
+                    - fromFieldPath: spec.parameters.namePrefix
+
+              - type: FromCompositeFieldPath
+                fromFieldPath: status.bucketName
+                toFieldPath: spec.forProvider.manifest.data.bucketName
+
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.region
+                toFieldPath: spec.forProvider.manifest.data.region
+
+              - type: CombineFromComposite
+                toFieldPath: spec.forProvider.manifest.data.endpoint
+                combine:
+                  strategy: string
+                  string:
+                    fmt: "https://%s.s3.%s.amazonaws.com"
+                  variables:
+                    - fromFieldPath: status.bucketName
+                    - fromFieldPath: spec.parameters.region
+
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.cmProviderConfigRef
+                toFieldPath: spec.providerConfigRef.name
