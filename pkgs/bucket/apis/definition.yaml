@@ -1,8 +1,9 @@
-apiVersion: apiextensions.crossplane.io/v1
+apiVersion: apiextensions.crossplane.io/v2
 kind: CompositeResourceDefinition
 metadata:
   name: xbuckets.devops-autopilot-crossplane-packages.io
 spec:
+  scope: Namespaced
   defaultCompositeDeletePolicy: Foreground
   group: devops-autopilot-crossplane-packages.io
   defaultCompositionRef:
@@ -10,9 +11,6 @@ spec:
   names:
     kind: XBucket
     plural: xbuckets
-  claimNames:
-    kind: Bucket
-    plural: buckets
   versions:
     - name: v1alpha1
       served: true
@@ -56,26 +54,10 @@ spec:
                       type: string
                       description: Azure resource group name (for Azure provider)
                       default: default-rg
-                    storageEncrypted:
-                      type: boolean
-                      default: true
-                      description: Whether storage encryption is enabled
                     versioning:
                       type: boolean
                       default: false
                       description: Whether versioning is enabled for the bucket
-                    publishConfig:
-                      type: object
-                      description: Configuration for publishing bucket metadata for consumers
-                      properties:
-                        namespace:
-                          type: string
-                          description: Namespace where the ConfigMap will be created
-                        name:
-                          type: string
-                          description: Name of the ConfigMap to create
-                      required:
-                        - namespace
                     tags:
                       type: object
                       description: Tags to apply to the underlying cloud resources
@@ -88,15 +70,10 @@ spec:
                     cloudProviderConfigRef:
                       type: string
                       description: Reference to the provider config to use for this bucket
-                    cmProviderConfigRef:
-                      type: string
-                      description: Reference to the provider config to use for the generated ConfigMap
                   required:
                     - namePrefix
                     - region
                     - cloudProviderConfigRef
-                    - cmProviderConfigRef
-                    - publishConfig
               required:
                 - parameters
             status:
@@ -105,8 +82,8 @@ spec:
                 bucketName:
                   type: string
                   description: Actual bucket name used by the composed AWS bucket.
-                endpoint:
+                endpointURL:
                   type: string
-                  description: Computed S3 endpoint URL for the bucket.    
+                  description: Bucket endpoint URL observed from the composed bucket.
           required:
             - spec

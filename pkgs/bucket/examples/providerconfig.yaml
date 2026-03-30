@@ -17,19 +17,6 @@ spec:
 ---
 
 apiVersion: pkg.crossplane.io/v1
-kind: Provider
-metadata:
-  name: upbound-provider-kubernetes
-spec:
-  package: xpkg.upbound.io/upbound/provider-kubernetes:v1.2.2
-  runtimeConfigRef:
-    apiVersion: pkg.crossplane.io/v1beta1
-    kind: DeploymentRuntimeConfig
-    name: kubernetes-provider-runtime
-
----
-
-apiVersion: pkg.crossplane.io/v1
 kind: Function
 metadata:
   name: function-patch-and-transform
@@ -57,45 +44,3 @@ metadata:
 spec:
   credentials:
     source: InjectedIdentity
-
----
-
-# Kubernetes ProviderConfig
-apiVersion: kubernetes.crossplane.io/v1alpha1
-kind: ProviderConfig
-metadata:
-  name: k8s-provider-config
-spec:
-  credentials:
-    source: InjectedIdentity
-
----
-
-# DeploymentRuntimeConfig for Kubernetes provider
-apiVersion: pkg.crossplane.io/v1beta1
-kind: DeploymentRuntimeConfig
-metadata:
-  name: kubernetes-provider-runtime
-spec:
-  serviceAccountTemplate:
-    metadata:
-      name: kubernetes-provider
-
----
-
-# RBAC for Kubernetes provider
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  name: kubernetes-provider-cluster-admin
-subjects:
-  - kind: ServiceAccount
-    name: kubernetes-provider
-    namespace: crossplane-system
-roleRef:
-  kind: ClusterRole
-  name: cluster-admin
-  apiGroup: rbac.authorization.k8s.io
-
----
-
