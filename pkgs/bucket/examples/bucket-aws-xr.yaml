@@ -4,6 +4,8 @@ metadata:
   name: my-aws-bucket
   namespace: default
 spec:
+  managementPolicies:
+    - "*"
   crossplane:
     compositionRef:
       name: bucket-aws-composition

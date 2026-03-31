@@ -29,6 +29,12 @@ spec:
                 forProvider: {}
             patches:
               - type: FromCompositeFieldPath
+                fromFieldPath: spec.managementPolicies
+                toFieldPath: spec.managementPolicies
+                policy:
+                  fromFieldPath: Optional
+
+              - type: FromCompositeFieldPath
                 fromFieldPath: metadata.namespace
                 toFieldPath: metadata.namespace
 
@@ -75,6 +81,12 @@ spec:
                     matchControllerRef: true
             patches:
               - type: FromCompositeFieldPath
+                fromFieldPath: spec.managementPolicies
+                toFieldPath: spec.managementPolicies
+                policy:
+                  fromFieldPath: Optional
+
+              - type: FromCompositeFieldPath
                 fromFieldPath: metadata.namespace
                 toFieldPath: metadata.namespace
 
@@ -106,6 +118,12 @@ spec:
                   bucketSelector:
                     matchControllerRef: true
             patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.managementPolicies
+                toFieldPath: spec.managementPolicies
+                policy:
+                  fromFieldPath: Optional
+
               - type: FromCompositeFieldPath
                 fromFieldPath: metadata.namespace
                 toFieldPath: metadata.namespace
@@ -168,6 +186,12 @@ spec:
                     - applyServerSideEncryptionByDefault:
                         - sseAlgorithm: AES256
             patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.managementPolicies
+                toFieldPath: spec.managementPolicies
+                policy:
+                  fromFieldPath: Optional
+
               - type: FromCompositeFieldPath
                 fromFieldPath: metadata.namespace
                 toFieldPath: metadata.namespace

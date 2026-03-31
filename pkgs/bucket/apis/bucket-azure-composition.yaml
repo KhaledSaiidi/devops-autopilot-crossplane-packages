@@ -1,1 +1,154 @@
-# TODO in the plan next step, we will add the api spec for bucket-azure-composition
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: bucket-azure-composition
+  labels:
+    crossplane.io/xrd: xbuckets.devops-autopilot-crossplane-packages.io
+    provider: azure
+spec:
+  compositeTypeRef:
+    apiVersion: devops-autopilot-crossplane-packages.io/v1alpha1
+    kind: XBucket
+
+  mode: Pipeline
+  pipeline:
+    - step: patch-and-transform
+      functionRef:
+        name: function-patch-and-transform
+      input:
+        apiVersion: pt.fn.crossplane.io/v1beta1
+        kind: Resources
+        resources:
+          - name: azure-storage-account
+            base:
+              apiVersion: storage.azure.upbound.io/v1beta1
+              kind: Account
+              spec:
+                forProvider:
+                  accessTier: Hot
+                  accountKind: StorageV2
+                  accountReplicationType: LRS
+                  accountTier: Standard
+                  allowNestedItemsToBePublic: false
+                  blobProperties:
+                    - versioningEnabled: false
+                  httpsTrafficOnlyEnabled: true
+                  isHnsEnabled: false
+                providerConfigRef:
+                  name: default
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.managementPolicies
+                toFieldPath: spec.managementPolicies
+                policy:
+                  fromFieldPath: Optional
+
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.namePrefix
+                toFieldPath: metadata.name
+
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.region
+                toFieldPath: spec.forProvider.location
+
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.resourceGroupName
+                toFieldPath: spec.forProvider.resourceGroupName
+
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.tags
+                toFieldPath: spec.forProvider.tags
+                policy:
+                  fromFieldPath: Optional
+
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.versioning
+                toFieldPath: spec.forProvider.blobProperties[0].versioningEnabled
+
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.publicAccess
+                toFieldPath: spec.forProvider.allowNestedItemsToBePublic
+
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.cloudProviderConfigRef
+                toFieldPath: spec.providerConfigRef.name
+
+              - type: ToCompositeFieldPath
+                fromFieldPath: status.atProvider.primaryBlobEndpoint
+                toFieldPath: status.endpointURL
+
+          - name: azure-storage-container
+            base:
+              apiVersion: storage.azure.upbound.io/v1beta1
+              kind: Container
+              spec:
+                forProvider:
+                  containerAccessType: private
+                  storageAccountNameSelector:
+                    matchControllerRef: true
+                providerConfigRef:
+                  name: default
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.managementPolicies
+                toFieldPath: spec.managementPolicies
+                policy:
+                  fromFieldPath: Optional
+
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.namePrefix
+                toFieldPath: metadata.name
+
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.publicAccess
+                toFieldPath: spec.forProvider.containerAccessType
+                transforms:
+                  - type: map
+                    map:
+                      "true": blob
+                      "false": private
+
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.cloudProviderConfigRef
+                toFieldPath: spec.providerConfigRef.name
+
+              - type: ToCompositeFieldPath
+                fromFieldPath: metadata.name
+                toFieldPath: status.bucketName
+
+          - name: bucket-config
+            base:
+              apiVersion: v1
+              kind: ConfigMap
+              metadata:
+                namespace: default
+                name: bucket-config
+              data:
+                bucketName: ""
+                endpointURL: ""
+                region: ""
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.namespace
+                toFieldPath: metadata.namespace
+
+              - type: CombineFromComposite
+                toFieldPath: metadata.name
+                combine:
+                  strategy: string
+                  string:
+                    fmt: "%s-bucket"
+                  variables:
+                    - fromFieldPath: metadata.name
+
+              - type: FromCompositeFieldPath
+                fromFieldPath: status.bucketName
+                toFieldPath: data.bucketName
+
+              - type: FromCompositeFieldPath
+                fromFieldPath: status.endpointURL
+                toFieldPath: data.endpointURL
+
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.region
+                toFieldPath: data.region

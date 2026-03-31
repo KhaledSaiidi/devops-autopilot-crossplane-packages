@@ -81,9 +81,9 @@ spec:
               properties:
                 bucketName:
                   type: string
-                  description: Actual bucket name used by the composed AWS bucket.
+                  description: Actual bucket or container name used by the composed storage resource.
                 endpointURL:
                   type: string
-                  description: Bucket endpoint URL observed from the composed bucket.
+                  description: Endpoint URL observed from the composed storage resource.
           required:
             - spec

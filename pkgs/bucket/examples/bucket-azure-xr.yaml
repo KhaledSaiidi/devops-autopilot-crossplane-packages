@@ -4,6 +4,8 @@ metadata:
   name: my-azure-bucket
   namespace: default
 spec:
+  managementPolicies:
+    - "*"
   crossplane:
     compositionRef:
       name: bucket-azure-composition
