@@ -30,26 +30,54 @@ func TestRunFunction(t *testing.T) {
 		args   args
 		want   want
 	}{
-		"ResponseIsReturned": {
-			reason: "The Function should return a fatal result if no input was specified",
+		"NormalizesBucketNameFromCompositePrefix": {
+			reason: "The Function should read the bucket name prefix from the composite, normalize it, and write the result to status.bucketName",
 			args: args{
 				req: &fnv1.RunFunctionRequest{
 					Meta: &fnv1.RequestMeta{Tag: "hello"},
 					Input: resource.MustStructJSON(`{
-						"apiVersion": "template.fn.crossplane.io/v1beta1",
-						"kind": "Input",
-						"example": "Hello, world"
-					}`),
+						"apiVersion": "functions.devops-autopilot-crossplane-packages.io/v1beta1",
+						"kind": "NameNormalizerInput",
+						"provider": "aws",
+						"sourceFieldPath": "spec.parameters.namePrefix",
+						"targetFieldPath": "status.bucketName",
+						"maxLength": 63
+						}`),
+					Observed: &fnv1.State{
+						Composite: &fnv1.Resource{
+							Resource: resource.MustStructJSON(`{
+								"apiVersion": "devops-autopilot-crossplane-packages.io/v1alpha1",
+								"kind": "XBucket",
+								"spec": {
+									"parameters": {
+										"namePrefix": "MyBucket_Example"
+									}
+								}
+							}`),
+						},
+					},
 				},
 			},
 			want: want{
 				rsp: &fnv1.RunFunctionResponse{
-					Meta: &fnv1.ResponseMeta{Tag: "hello", Ttl: durationpb.New(response.DefaultTTL)},
-					Results: []*fnv1.Result{
-						{
-							Severity: fnv1.Severity_SEVERITY_NORMAL,
-							Message:  "I was run with input \"Hello, world\"!",
-							Target:   fnv1.Target_TARGET_COMPOSITE.Enum(),
+					Meta: &fnv1.ResponseMeta{
+						Tag: "hello",
+						Ttl: durationpb.New(response.DefaultTTL),
+					},
+					Desired: &fnv1.State{
+						Composite: &fnv1.Resource{
+							Resource: resource.MustStructJSON(`{
+								"apiVersion": "devops-autopilot-crossplane-packages.io/v1alpha1",
+								"kind": "XBucket",
+								"spec": {
+									"parameters": {
+										"namePrefix": "MyBucket_Example"
+									}
+								},
+								"status": {
+									"bucketName": "mybucket-example"
+								}
+							}`),
 						},
 					},
 					Conditions: []*fnv1.Condition{
