@@ -1,0 +1,9 @@
+// crossplane xpkg init bucket configuration-template <- in pkgs/bucket
+
+  //  kubectl api-resources | grep s3.aws.upbound.io
+  //  kubectl explain bucket.s3.aws.upbound.io.spec.forProvider
+  //  kubectl explain bucketversioning.s3.aws.upbound.io.spec.forProvider
+  //  kubectl explain bucketpublicaccessblock.s3.aws.upbound.io.spec.forProvider
+  //  kubectl explain bucketserversideencryptionconfiguration.s3.aws.upbound.io.spec.forProvider
+
+// crossplane xpkg init function-bucket-name-normalizer function-template-go <- in functions/function-bucket-name-normalizer
