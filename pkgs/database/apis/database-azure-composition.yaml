@@ -1,0 +1,160 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: database-azure-composition
+  labels:
+    crossplane.io/xrd: xdatabases.devops-autopilot-crossplane-packages.io
+    provider: azure
+spec:
+  compositeTypeRef:
+    apiVersion: devops-autopilot-crossplane-packages.io/v1alpha1
+    kind: XDatabase
+  mode: Pipeline
+  pipeline:
+    - step: render-azure-database
+      functionRef:
+        name: function-go-templating
+      input:
+        apiVersion: gotemplating.fn.crossplane.io/v1beta1
+        kind: GoTemplate
+        source: Inline
+        inline:
+          template: |
+            {{- $xr := .observed.composite.resource -}}
+            {{- $params := $xr.spec.parameters -}}
+            {{- $name := $xr.metadata.name -}}
+            {{- $namespace := $xr.metadata.namespace -}}
+            {{- $serverExternalName := default $name $params.namePrefix -}}
+            {{- $connectionSecretName := printf "%s-db-connection" $name -}}
+            {{- $primary := index .observed.resources "azure-primary" | default dict -}}
+            {{- $primaryEndpoint := dig "resource" "status" "atProvider" "fqdn" "" $primary -}}
+            {{- $firstReplica := index .observed.resources "azure-replica-0" | default dict -}}
+            {{- $readerEndpoint := dig "resource" "status" "atProvider" "fqdn" "" $firstReplica -}}
+            {{- $storageMB := mul (int (default 32 $params.storageGB)) 1024 -}}
+            apiVersion: devops-autopilot-crossplane-packages.io/v1alpha1
+            kind: XDatabase
+            status:
+              provider: azure
+              endpoint: {{ $primaryEndpoint | quote }}
+              readerEndpoint: {{ $readerEndpoint | quote }}
+              port: 5432
+              databaseName: {{ $params.databaseName | quote }}
+              adminUsername: {{ $params.adminUsername | quote }}
+              connectionSecretName: {{ $connectionSecretName | quote }}
+            ---
+            apiVersion: dbforpostgresql.azure.upbound.io/v1beta1
+            kind: FlexibleServer
+            metadata:
+              name: {{ printf "%s-azure-primary" $name }}
+              annotations:
+                {{ setResourceNameAnnotation "azure-primary" }}
+                crossplane.io/external-name: {{ $serverExternalName | quote }}
+            spec:
+              managementPolicies:
+            {{ toYaml (default (list "*") $xr.spec.managementPolicies) | indent 4 }}
+              forProvider:
+                location: {{ $params.region | quote }}
+                resourceGroupName: {{ default "default-rg" $params.resourceGroupName | quote }}
+                createMode: Default
+                administratorLogin: {{ $params.adminUsername | quote }}
+                administratorPasswordSecretRef:
+                  namespace: {{ $namespace | quote }}
+                  name: {{ $params.adminPasswordSecretName | quote }}
+                  key: password
+                version: {{ default "16" $params.engineVersion | quote }}
+                skuName: {{ default "B_Standard_B2s" $params.azureSkuName | quote }}
+                storageMb: {{ $storageMB }}
+                backupRetentionDays: {{ default 7 $params.backupRetentionDays }}
+                publicNetworkAccessEnabled: {{ default false $params.publicAccess }}
+                autoGrowEnabled: true
+                authentication:
+                  passwordAuthEnabled: true
+                tags:
+            {{ toYaml (default dict $params.tags) | indent 8 }}
+              providerConfigRef:
+                name: {{ $params.cloudProviderConfigRef | quote }}
+              writeConnectionSecretToRef:
+                namespace: {{ $namespace | quote }}
+                name: {{ $connectionSecretName | quote }}
+            ---
+            apiVersion: dbforpostgresql.azure.upbound.io/v1beta1
+            kind: FlexibleServerDatabase
+            metadata:
+              name: {{ printf "%s-azure-database" $name }}
+              annotations:
+                {{ setResourceNameAnnotation "azure-database" }}
+                crossplane.io/external-name: {{ $params.databaseName | quote }}
+            spec:
+              managementPolicies:
+            {{ toYaml (default (list "*") $xr.spec.managementPolicies) | indent 4 }}
+              forProvider:
+                charset: UTF8
+                collation: en_US.utf8
+                serverIdRef:
+                  name: {{ printf "%s-azure-primary" $name }}
+              providerConfigRef:
+                name: {{ $params.cloudProviderConfigRef | quote }}
+            {{- if (default false $params.publicAccess) }}
+            ---
+            apiVersion: dbforpostgresql.azure.upbound.io/v1beta1
+            kind: FlexibleServerFirewallRule
+            metadata:
+              name: {{ printf "%s-azure-firewall" $name }}
+              annotations:
+                {{ setResourceNameAnnotation "azure-firewall" }}
+            spec:
+              managementPolicies:
+            {{ toYaml (default (list "*") $xr.spec.managementPolicies) | indent 4 }}
+              forProvider:
+                serverIdRef:
+                  name: {{ printf "%s-azure-primary" $name }}
+                startIpAddress: {{ default "0.0.0.0" $params.firewallStartIPAddress | quote }}
+                endIpAddress: {{ default "255.255.255.255" $params.firewallEndIPAddress | quote }}
+              providerConfigRef:
+                name: {{ $params.cloudProviderConfigRef | quote }}
+            {{- end }}
+            {{- range $i := until (int (default 0 $params.readReplicas)) }}
+            ---
+            apiVersion: dbforpostgresql.azure.upbound.io/v1beta1
+            kind: FlexibleServer
+            metadata:
+              name: {{ printf "%s-azure-replica-%d" $name $i }}
+              annotations:
+                {{ setResourceNameAnnotation (printf "azure-replica-%d" $i) }}
+                crossplane.io/external-name: {{ printf "%s-replica-%d" $serverExternalName $i | quote }}
+            spec:
+              managementPolicies:
+            {{ toYaml (default (list "*") $xr.spec.managementPolicies) | indent 4 }}
+              forProvider:
+                location: {{ $params.region | quote }}
+                resourceGroupName: {{ default "default-rg" $params.resourceGroupName | quote }}
+                createMode: Replica
+                sourceServerIdRef:
+                  name: {{ printf "%s-azure-primary" $name }}
+                skuName: {{ default "B_Standard_B2s" $params.azureSkuName | quote }}
+                storageMb: {{ $storageMB }}
+                publicNetworkAccessEnabled: {{ default false $params.publicAccess }}
+                tags:
+            {{ toYaml (default dict $params.tags) | indent 8 }}
+              providerConfigRef:
+                name: {{ $params.cloudProviderConfigRef | quote }}
+            {{- end }}
+            ---
+            apiVersion: v1
+            kind: ConfigMap
+            metadata:
+              name: {{ printf "%s-database" $name }}
+              namespace: {{ $namespace | quote }}
+              annotations:
+                {{ setResourceNameAnnotation "azure-database-config" }}
+            data:
+              provider: azure
+              endpoint: {{ $primaryEndpoint | quote }}
+              readerEndpoint: {{ $readerEndpoint | quote }}
+              port: "5432"
+              databaseName: {{ $params.databaseName | quote }}
+              adminUsername: {{ $params.adminUsername | quote }}
+              connectionSecretName: {{ $connectionSecretName | quote }}
+    - step: detect-ready-resources
+      functionRef:
+        name: function-auto-ready

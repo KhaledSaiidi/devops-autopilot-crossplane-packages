@@ -1,0 +1,27 @@
+apiVersion: devops-autopilot-crossplane-packages.io/v1alpha1
+kind: XDatabase
+metadata:
+  name: my-aws-database
+  namespace: default
+spec:
+  managementPolicies:
+    - "*"
+  crossplane:
+    compositionRef:
+      name: database-aws-composition
+  parameters:
+    namePrefix: my-aws-aurora
+    region: us-east-1
+    databaseName: appdb
+    adminUsername: postgresadmin
+    adminPasswordSecretName: database-admin-password
+    cloudProviderConfigRef: aws-provider-config
+    engineVersion: "16.3"
+    awsInstanceClass: db.t4g.medium
+    storageGB: 32
+    readReplicas: 1
+    backupRetentionDays: 7
+    publicAccess: false
+    tags:
+      purpose: demo
+      env: test

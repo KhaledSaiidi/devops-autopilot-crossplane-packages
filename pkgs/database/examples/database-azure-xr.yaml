@@ -1,0 +1,30 @@
+apiVersion: devops-autopilot-crossplane-packages.io/v1alpha1
+kind: XDatabase
+metadata:
+  name: my-azure-database
+  namespace: default
+spec:
+  managementPolicies:
+    - "*"
+  crossplane:
+    compositionRef:
+      name: database-azure-composition
+  parameters:
+    namePrefix: my-azure-postgres
+    region: westeurope
+    resourceGroupName: default-rg
+    databaseName: appdb
+    adminUsername: postgresadmin
+    adminPasswordSecretName: database-admin-password
+    cloudProviderConfigRef: azure-provider-config
+    engineVersion: "16"
+    azureSkuName: B_Standard_B2s
+    storageGB: 32
+    readReplicas: 1
+    backupRetentionDays: 7
+    publicAccess: true
+    firewallStartIPAddress: 0.0.0.0
+    firewallEndIPAddress: 255.255.255.255
+    tags:
+      purpose: demo
+      env: test

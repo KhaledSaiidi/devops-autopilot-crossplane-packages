@@ -1,0 +1,146 @@
+apiVersion: apiextensions.crossplane.io/v2
+kind: CompositeResourceDefinition
+metadata:
+  name: xdatabases.devops-autopilot-crossplane-packages.io
+spec:
+  scope: Namespaced
+  defaultCompositeDeletePolicy: Foreground
+  group: devops-autopilot-crossplane-packages.io
+  defaultCompositionRef:
+    name: database-aws-composition
+  names:
+    kind: XDatabase
+    plural: xdatabases
+  versions:
+    - name: v1alpha1
+      served: true
+      referenceable: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                managementPolicies:
+                  type: array
+                  default:
+                    - "*"
+                  description: |-
+                    Management actions that the Crossplane controllers
+                    can take on the external resource.
+                  items:
+                    type: string
+                    enum:
+                      - Observe
+                      - Create
+                      - Update
+                      - Delete
+                      - LateInitialize
+                      - "*"
+                parameters:
+                  type: object
+                  properties:
+                    namePrefix:
+                      type: string
+                      description: Prefix used to generate provider-specific database resource names.
+                    region:
+                      type: string
+                      description: Region or location where the database will be created.
+                    resourceGroupName:
+                      type: string
+                      default: default-rg
+                      description: Azure resource group used by the Flexible Server composition.
+                    databaseName:
+                      type: string
+                      description: Initial PostgreSQL database name.
+                    adminUsername:
+                      type: string
+                      description: Administrator username for the database server.
+                    adminPasswordSecretName:
+                      type: string
+                      description: Kubernetes Secret name that contains the admin password under the `password` key.
+                    cloudProviderConfigRef:
+                      type: string
+                      description: Crossplane ProviderConfig used by the selected cloud provider.
+                    engineVersion:
+                      type: string
+                      default: "16"
+                      description: PostgreSQL engine version to request from the provider.
+                    storageGB:
+                      type: integer
+                      default: 32
+                      minimum: 20
+                      description: Desired database storage in GiB. Azure uses it directly; Aurora storage is autoscaled.
+                    readReplicas:
+                      type: integer
+                      default: 0
+                      minimum: 0
+                      maximum: 5
+                      description: Number of read replicas to provision when supported by the selected composition.
+                    backupRetentionDays:
+                      type: integer
+                      default: 7
+                      minimum: 7
+                      maximum: 35
+                      description: Backup retention period in days.
+                    publicAccess:
+                      type: boolean
+                      default: false
+                      description: Whether to expose the database through a public endpoint when supported.
+                    firewallStartIPAddress:
+                      type: string
+                      default: 0.0.0.0
+                      description: Azure firewall rule start IP used when public access is enabled.
+                    firewallEndIPAddress:
+                      type: string
+                      default: 255.255.255.255
+                      description: Azure firewall rule end IP used when public access is enabled.
+                    awsInstanceClass:
+                      type: string
+                      default: db.t4g.medium
+                      description: AWS Aurora instance class used for cluster instances.
+                    azureSkuName:
+                      type: string
+                      default: B_Standard_B2s
+                      description: Azure Flexible Server SKU name.
+                    tags:
+                      type: object
+                      description: Tags to apply to the underlying managed resources.
+                      additionalProperties:
+                        type: string
+                  required:
+                    - namePrefix
+                    - region
+                    - databaseName
+                    - adminUsername
+                    - adminPasswordSecretName
+                    - cloudProviderConfigRef
+              required:
+                - parameters
+            status:
+              type: object
+              properties:
+                provider:
+                  type: string
+                  description: Provider backing the composed database.
+                endpoint:
+                  type: string
+                  description: Writer endpoint exposed by the composed database.
+                readerEndpoint:
+                  type: string
+                  description: Reader endpoint exposed by the composed database when available.
+                port:
+                  type: integer
+                  description: Database port.
+                databaseName:
+                  type: string
+                  description: Initial database name created by the composition.
+                adminUsername:
+                  type: string
+                  description: Administrator username used by the composed database.
+                connectionSecretName:
+                  type: string
+                  description: Secret containing connection details emitted by the primary managed resource.
+          required:
+            - spec
