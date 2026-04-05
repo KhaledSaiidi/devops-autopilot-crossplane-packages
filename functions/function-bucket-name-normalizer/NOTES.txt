@@ -1,0 +1,106 @@
+diff --git a//home/khaleds/personal-projects/devops-autopilot-crossplane-packages/functions/function-bucket-name-normalizer/NOTES.txt b//home/khaleds/personal-projects/devops-autopilot-crossplane-packages/functions/function-bucket-name-normalizer/NOTES.txt
+deleted file mode 100644
+--- a//home/khaleds/personal-projects/devops-autopilot-crossplane-packages/functions/function-bucket-name-normalizer/NOTES.txt
++++ /dev/null
+@@ -1,9 +0,0 @@
+-To get started:
+-
+-1. Replace `function-template-go` with your function in `go.mod`,
+-   `package/crossplane.yaml`, and any Go imports. (You can also do this
+-   automatically by running the `./init.sh <function-name>` script.)
+
+-2. Update `input/v1beta1/` to reflect your desired input (and run `go generate ./...`)
+-3. Add your logic to `RunFunction` in `fn.go`
+-4. Add tests for your logic in `fn_test.go`
+-5. Update `README.md`, to be about your function!
+
+---------------------------------------------tree---------------------------------------------
+main.go
+What it is for: starts the function server so Crossplane can call it.
+What you should change: usually nothing, unless you want to change runtime flags or logging behavior.
+
+fn.go
+What it is for: this is the real function logic.
+What you should change: yes, this is where you will implement the bucket name normalization behavior.
+
+fn_test.go
+What it is for: tests that prove the function works correctly.
+What you should change: yes, rewrite the template test to cover your real normalization cases.
+
+go.mod
+What it is for: defines the Go module and dependencies.
+What you should change: usually no, unless you add or remove Go dependencies.
+
+go.sum
+What it is for: locks dependency checksums for Go.
+What you should change: not by hand; it updates automatically when dependencies change.
+
+Dockerfile
+What it is for: builds the container image for the function.
+What you should change: usually no at first; only later if you need custom build/runtime behavior.
+
+package/crossplane.yaml
+What it is for: defines this directory as a Crossplane Function package.
+What you should change: maybe later for package metadata, but not much right now.
+
+input/v1beta1/input.go
+What it is for: defines the input schema your function accepts.
+What you should change: yes, replace the dummy Example field with the real input fields your function needs.
+
+input/v1beta1/zz_generated.deepcopy.go
+What it is for: generated helper code for the input type.
+What you should change: never by hand; regenerate it after changing input.go.
+
+input/generate.go
+What it is for: tells Go how to regenerate input-related code.
+What you should change: usually no.
+
+package/input/template.fn.crossplane.io_inputs.yaml
+What it is for: generated package input schema metadata for the function.
+What you should change: not by hand; it should be regenerated from your input type.
+
+README.md
+What it is for: human explanation of what this function does and how to work on it.
+What you should change: yes, once the function logic is real, update it to match reality.
+
+NOTES.txt
+What it is for: extra template notes.
+What you should change: either delete it later or ignore it if it is no longer useful.
+
+.golangci.yml
+What it is for: linter rules for this function project.
+What you should change: usually no, unless you want different lint rules.
+
+If you want the shortest practical focus, the files you will really work in first are:
+
+input/v1beta1/input.go
+fn.go
+fn_test.go
+README.md
+Everything else is mostly support/build/package plumbing.
+
+
+
+---------------------------------------------tree---------------------------------------------
+From functions/function-bucket-name-normalizer:
+
+1. go test ./...
+Use this all the time to test your function.
+
+2. go generate ./...
+Use this after changing input/v1beta1/input.go.
+This is the command that should regenerate:
+input/v1beta1/zz_generated.deepcopy.go
+package/input/...inputs.yaml
+
+3. go mod tidy
+Use this only when you add/remove imports or dependencies and want go.mod / go.sum cleaned up.
+
+
+4. docker build . --tag=function-bucket-name-normalizer:dev
+Builds the runtime image for the function.
+
+
+4. crossplane xpkg build -f package --embed-runtime-image=function-bucket-name-normalizer:dev
+Builds the Crossplane function package.
+

@@ -1,4 +1,3 @@
-```md
 # 🚀 DevOps Autopilot — Crossplane Packages
 
 > Crossplane compositions & functions packaged as OCI artifacts to power the DevOps Autopilot platform.
@@ -161,4 +160,3 @@ This repository is where:
 It defines how infrastructure is consumed — not how it is created.
 
 ---
-```

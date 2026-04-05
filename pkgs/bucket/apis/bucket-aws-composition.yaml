@@ -21,11 +21,23 @@ spec:
         resources:
           - name: aws-bucket
             base:
-              apiVersion: s3.aws.upbound.io/v1beta1
+              apiVersion: s3.aws.m.upbound.io/v1beta1
               kind: Bucket
+              metadata:
+                namespace: default
               spec:
                 forProvider: {}
             patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.managementPolicies
+                toFieldPath: spec.managementPolicies
+                policy:
+                  fromFieldPath: Optional
+
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.namespace
+                toFieldPath: metadata.namespace
+
               - type: FromCompositeFieldPath
                 fromFieldPath: spec.parameters.namePrefix
                 toFieldPath: spec.forProvider.bucket
@@ -48,15 +60,36 @@ spec:
                 fromFieldPath: spec.forProvider.bucket
                 toFieldPath: status.bucketName
 
+              - type: ToCompositeFieldPath
+                fromFieldPath: status.atProvider.bucketRegionalDomainName
+                toFieldPath: status.endpointURL
+                transforms:
+                  - type: string
+                    string:
+                      type: Format
+                      fmt: "https://%s"
+
           - name: aws-bucket-versioning
             base:
-              apiVersion: s3.aws.upbound.io/v1beta1
+              apiVersion: s3.aws.m.upbound.io/v1beta1
               kind: BucketVersioning
+              metadata:
+                namespace: default
               spec:
                 forProvider:
                   bucketSelector:
                     matchControllerRef: true
             patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.managementPolicies
+                toFieldPath: spec.managementPolicies
+                policy:
+                  fromFieldPath: Optional
+
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.namespace
+                toFieldPath: metadata.namespace
+
               - type: FromCompositeFieldPath
                 fromFieldPath: spec.parameters.region
                 toFieldPath: spec.forProvider.region
@@ -76,13 +109,25 @@ spec:
 
           - name: aws-bucket-public-access-block
             base:
-              apiVersion: s3.aws.upbound.io/v1beta1
+              apiVersion: s3.aws.m.upbound.io/v1beta1
               kind: BucketPublicAccessBlock
+              metadata:
+                namespace: default
               spec:
                 forProvider:
                   bucketSelector:
                     matchControllerRef: true
             patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.managementPolicies
+                toFieldPath: spec.managementPolicies
+                policy:
+                  fromFieldPath: Optional
+
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.namespace
+                toFieldPath: metadata.namespace
+
               - type: FromCompositeFieldPath
                 fromFieldPath: spec.parameters.region
                 toFieldPath: spec.forProvider.region
@@ -129,8 +174,10 @@ spec:
 
           - name: aws-bucket-encryption
             base:
-              apiVersion: s3.aws.upbound.io/v1beta1
+              apiVersion: s3.aws.m.upbound.io/v1beta1
               kind: BucketServerSideEncryptionConfiguration
+              metadata:
+                namespace: default
               spec:
                 forProvider:
                   bucketSelector:
@@ -140,6 +187,16 @@ spec:
                         - sseAlgorithm: AES256
             patches:
               - type: FromCompositeFieldPath
+                fromFieldPath: spec.managementPolicies
+                toFieldPath: spec.managementPolicies
+                policy:
+                  fromFieldPath: Optional
+
+              - type: FromCompositeFieldPath
+                fromFieldPath: metadata.namespace
+                toFieldPath: metadata.namespace
+
+              - type: FromCompositeFieldPath
                 fromFieldPath: spec.parameters.region
                 toFieldPath: spec.forProvider.region
 
@@ -147,54 +204,39 @@ spec:
                 fromFieldPath: spec.parameters.cloudProviderConfigRef
                 toFieldPath: spec.providerConfigRef.name
 
-          - name: bucket-configmap
+          - name: bucket-config
             base:
-              apiVersion: kubernetes.crossplane.io/v1alpha2
-              kind: Object
-              spec:
-                forProvider:
-                  manifest:
-                    apiVersion: v1
-                    kind: ConfigMap
-                    metadata:
-                      namespace: default
-                      name: bucket-config
-                    data:
-                      bucketName: ""
-                      region: ""
-                      containerName: ""
+              apiVersion: v1
+              kind: ConfigMap
+              metadata:
+                namespace: default
+                name: bucket-config
+              data:
+                bucketName: ""
+                endpointURL: ""
+                region: ""
             patches:
               - type: FromCompositeFieldPath
-                fromFieldPath: spec.parameters.publishConfig.namespace
-                toFieldPath: spec.forProvider.manifest.metadata.namespace
+                fromFieldPath: metadata.namespace
+                toFieldPath: metadata.namespace
 
               - type: CombineFromComposite
-                toFieldPath: spec.forProvider.manifest.metadata.name
+                toFieldPath: metadata.name
                 combine:
                   strategy: string
                   string:
-                    fmt: "bucket-%s-config"
+                    fmt: "%s-bucket"
                   variables:
-                    - fromFieldPath: spec.parameters.namePrefix
+                    - fromFieldPath: metadata.name
 
               - type: FromCompositeFieldPath
                 fromFieldPath: status.bucketName
-                toFieldPath: spec.forProvider.manifest.data.bucketName
+                toFieldPath: data.bucketName
+
+              - type: FromCompositeFieldPath
+                fromFieldPath: status.endpointURL
+                toFieldPath: data.endpointURL
 
               - type: FromCompositeFieldPath
                 fromFieldPath: spec.parameters.region
-                toFieldPath: spec.forProvider.manifest.data.region
-
-              - type: CombineFromComposite
-                toFieldPath: spec.forProvider.manifest.data.endpoint
-                combine:
-                  strategy: string
-                  string:
-                    fmt: "https://%s.s3.%s.amazonaws.com"
-                  variables:
-                    - fromFieldPath: status.bucketName
-                    - fromFieldPath: spec.parameters.region
-
-              - type: FromCompositeFieldPath
-                fromFieldPath: spec.parameters.cmProviderConfigRef
-                toFieldPath: spec.providerConfigRef.name
+                toFieldPath: data.region

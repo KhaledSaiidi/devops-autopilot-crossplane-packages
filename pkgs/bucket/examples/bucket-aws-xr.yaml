@@ -2,17 +2,17 @@ apiVersion: devops-autopilot-crossplane-packages.io/v1alpha1
 kind: XBucket
 metadata:
   name: my-aws-bucket
+  namespace: default
 spec:
-  compositionRef:
-    name: bucket-aws-composition
+  managementPolicies:
+    - "*"
+  crossplane:
+    compositionRef:
+      name: bucket-aws-composition
   parameters:
     namePrefix: "myawsexample"
     region: "us-east-1"
     cloudProviderConfigRef: "aws-provider-config"
-    cmProviderConfigRef: "k8s-provider-config"
-    publishConfig:
-      namespace: default
-      name: my-aws-bucket-config
     tags:
       purpose: demo
       env: test

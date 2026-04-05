@@ -2,18 +2,18 @@ apiVersion: devops-autopilot-crossplane-packages.io/v1alpha1
 kind: XBucket
 metadata:
   name: my-azure-bucket
+  namespace: default
 spec:
-  compositionRef:
-    name: bucket-azure-composition
+  managementPolicies:
+    - "*"
+  crossplane:
+    compositionRef:
+      name: bucket-azure-composition
   parameters:
     namePrefix: "myazureexample"
     region: "westus2"
     resourceGroupName: "default-rg"
     cloudProviderConfigRef: "azure-provider-config"
-    cmProviderConfigRef: "k8s-provider-config"
-    publishConfig:
-      namespace: default
-      name: my-azure-bucket-config
     tags:
       purpose: demo
       env: test
