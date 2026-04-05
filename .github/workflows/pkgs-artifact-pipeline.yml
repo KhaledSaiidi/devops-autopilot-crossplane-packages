@@ -1,0 +1,259 @@
+name: Publish Crossplane OCI Artifacts
+
+on:
+  push:
+    branches:
+      - main
+    tags-ignore:
+      - "**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: publish-crossplane-artifacts-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.discover.outputs.matrix }}
+      count: ${{ steps.discover.outputs.count }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Discover artifacts to publish
+        id: discover
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          bump_patch() {
+            local current="$1"
+            local version="${current#v}"
+            local major minor patch
+            IFS='.' read -r major minor patch <<< "${version}"
+            patch=$((patch + 1))
+            printf 'v%s.%s.%s\n' "${major}" "${minor}" "${patch}"
+          }
+
+          fetch_package_versions() {
+            local api_scope="$1"
+            local package_name="$2"
+            local encoded_name response_file http_code
+
+            encoded_name="$(printf '%s' "${package_name}" | jq -sRr @uri)"
+            response_file="$(mktemp)"
+
+            http_code="$(
+              curl -sS \
+                -H "Accept: application/vnd.github+json" \
+                -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+                -H "X-GitHub-Api-Version: 2022-11-28" \
+                -o "${response_file}" \
+                -w '%{http_code}' \
+                "https://api.github.com/${api_scope}/packages/container/${encoded_name}/versions?per_page=100"
+            )"
+
+            if [ "${http_code}" = "200" ]; then
+              cat "${response_file}"
+              rm -f "${response_file}"
+              return 0
+            fi
+
+            if [ "${http_code}" = "404" ]; then
+              rm -f "${response_file}"
+              return 1
+            fi
+
+            echo "GitHub Packages API request failed for ${package_name} with HTTP ${http_code}" >&2
+            cat "${response_file}" >&2
+            rm -f "${response_file}"
+            return 2
+          }
+
+          owner_type="$(curl -sS \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/users/${GITHUB_REPOSITORY_OWNER}" | jq -r '.type')"
+
+          if [ "${owner_type}" = "Organization" ]; then
+            package_api_scope="orgs/${GITHUB_REPOSITORY_OWNER}"
+          else
+            package_api_scope="users/${GITHUB_REPOSITORY_OWNER}"
+          fi
+
+          repo_name="${GITHUB_REPOSITORY#*/}"
+          repo_name_lc="$(printf '%s' "${repo_name}" | tr '[:upper:]' '[:lower:]')"
+
+          before_sha="${{ github.event.before }}"
+          if [ -z "${before_sha}" ] || [ "${before_sha}" = "0000000000000000000000000000000000000000" ]; then
+            if git rev-parse HEAD^ >/dev/null 2>&1; then
+              base_sha="$(git rev-parse HEAD^)"
+            else
+              base_sha="$(git hash-object -t tree /dev/null)"
+            fi
+          else
+            base_sha="${before_sha}"
+          fi
+
+          changed_files="$(git diff --name-only "${base_sha}" "${GITHUB_SHA}" -- functions pkgs || true)"
+
+          echo "Base SHA: ${base_sha}"
+          echo "Changed files under functions/ and pkgs/:"
+          if [ -n "${changed_files}" ]; then
+            printf '%s\n' "${changed_files}"
+          else
+            echo "(none)"
+          fi
+
+          matrix='[]'
+
+          while IFS=$'\t' read -r artifact_type name path artifact_name; do
+            [ -n "${artifact_type}" ] || continue
+
+            changed=false
+            if [ -n "${changed_files}" ] && printf '%s\n' "${changed_files}" | grep -q "^${path}/"; then
+              changed=true
+            fi
+
+            package_exists=false
+            package_lookup=""
+            latest_version=""
+
+            for candidate in "${repo_name_lc}/${artifact_name}" "${artifact_name}"; do
+              if versions_json="$(fetch_package_versions "${package_api_scope}" "${candidate}")"; then
+                package_exists=true
+                package_lookup="${candidate}"
+                latest_version="$(
+                  printf '%s' "${versions_json}" \
+                    | jq -r '.[].metadata.container.tags[]? | select(test("^v[0-9]+\\.[0-9]+\\.[0-9]+$"))' \
+                    | sort -V \
+                    | tail -n 1
+                )"
+                break
+              fi
+            done
+
+            should_publish=false
+            next_version=""
+            reason="unchanged"
+
+            if [ "${package_exists}" = false ]; then
+              should_publish=true
+              next_version="v1.0.0"
+              reason="missing"
+            elif [ "${changed}" = true ]; then
+              should_publish=true
+              if [ -n "${latest_version}" ]; then
+                next_version="$(bump_patch "${latest_version}")"
+              else
+                next_version="v1.0.0"
+              fi
+              reason="changed"
+            fi
+
+            echo "Artifact ${artifact_name}: changed=${changed} exists=${package_exists} latest=${latest_version:-none} next=${next_version:-skip} reason=${reason} lookup=${package_lookup:-none}"
+
+            if [ "${should_publish}" = true ]; then
+              matrix="$(
+                jq -c \
+                  --arg type "${artifact_type}" \
+                  --arg name "${name}" \
+                  --arg path "${path}" \
+                  --arg artifact_name "${artifact_name}" \
+                  --arg version "${next_version}" \
+                  '. + [{
+                    type: $type,
+                    name: $name,
+                    path: $path,
+                    artifact_name: $artifact_name,
+                    version: $version
+                  }]' <<< "${matrix}"
+              )"
+            fi
+          done < <(
+            if [ -d pkgs ]; then
+              find pkgs -mindepth 1 -maxdepth 1 -type d | sort | while read -r dir; do
+                if [ -f "${dir}/crossplane.yaml" ]; then
+                  name="$(basename "${dir}")"
+                  printf 'pkg\t%s\t%s\tpkgs-%s\n' "${name}" "${dir}" "${name}"
+                fi
+              done
+            fi
+
+            if [ -d functions ]; then
+              find functions -mindepth 1 -maxdepth 1 -type d | sort | while read -r dir; do
+                if [ -f "${dir}/package/crossplane.yaml" ] && [ -f "${dir}/Dockerfile" ] && [ -f "${dir}/go.mod" ]; then
+                  name="$(basename "${dir}")"
+                  printf 'function\t%s\t%s\tfunction-%s\n' "${name}" "${dir}" "${name}"
+                fi
+              done
+            fi
+          )
+
+          count="$(jq 'length' <<< "${matrix}")"
+
+          echo "matrix=${matrix}" >> "${GITHUB_OUTPUT}"
+          echo "count=${count}" >> "${GITHUB_OUTPUT}"
+
+          {
+            echo "## Artifact discovery"
+            echo ""
+            echo "- Base SHA: \`${base_sha}\`"
+            echo "- Publish count: \`${count}\`"
+            echo "- Matrix: \`${matrix}\`"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+  publish:
+    needs: discover
+    if: needs.discover.outputs.count != '0'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        artifact: ${{ fromJson(needs.discover.outputs.matrix) }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Crossplane CLI
+        uses: crossplane-contrib/setup-crossplane-action@main
+        with:
+          version: v2.1.3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish artifact
+        run: |
+          make publish \
+            TYPE="${{ matrix.artifact.type }}" \
+            NAME="${{ matrix.artifact.name }}" \
+            VERSION="${{ matrix.artifact.version }}" \
+            OWNER="${{ github.repository_owner }}" \
+            REPOSITORY="${{ github.event.repository.name }}"
+
+      - name: Publish summary
+        run: |
+          owner_lc="$(printf '%s' "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')"
+          repo_lc="$(printf '%s' "${{ github.event.repository.name }}" | tr '[:upper:]' '[:lower:]')"
+          {
+            echo "## Published artifact"
+            echo ""
+            echo "- Type: \`${{ matrix.artifact.type }}\`"
+            echo "- Name: \`${{ matrix.artifact.name }}\`"
+            echo "- OCI path: \`ghcr.io/${owner_lc}/${repo_lc}/${{ matrix.artifact.artifact_name }}:${{ matrix.artifact.version }}\`"
+          } >> "${GITHUB_STEP_SUMMARY}"
