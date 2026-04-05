@@ -12,6 +12,17 @@ spec:
 
   mode: Pipeline
   pipeline:
+    - step: normalize-bucket-name
+      functionRef:
+        name: function-bucket-name-normalizer
+      input:
+        apiVersion: functions.devops-autopilot-crossplane-packages.io/v1beta1
+        kind: NameNormalizerInput
+        provider: azure
+        sourceFieldPath: spec.parameters.namePrefix
+        targetFieldPath: status.bucketName
+        maxLength: 63
+
     - step: patch-and-transform
       functionRef:
         name: function-patch-and-transform
@@ -96,7 +107,7 @@ spec:
                   fromFieldPath: Optional
 
               - type: FromCompositeFieldPath
-                fromFieldPath: spec.parameters.namePrefix
+                fromFieldPath: status.bucketName
                 toFieldPath: metadata.name
 
               - type: FromCompositeFieldPath
