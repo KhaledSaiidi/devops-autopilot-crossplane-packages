@@ -1,0 +1,122 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: database-aws-composition
+  labels:
+    crossplane.io/xrd: xdatabases.devops-autopilot-crossplane-packages.io
+    provider: aws
+spec:
+  compositeTypeRef:
+    apiVersion: devops-autopilot-crossplane-packages.io/v1alpha1
+    kind: XDatabase
+  mode: Pipeline
+  pipeline:
+    - step: render-aws-database
+      functionRef:
+        name: function-go-templating
+      input:
+        apiVersion: gotemplating.fn.crossplane.io/v1beta1
+        kind: GoTemplate
+        source: Inline
+        inline:
+          template: |
+            {{- $xr := .observed.composite.resource -}}
+            {{- $params := $xr.spec.parameters -}}
+            {{- $name := $xr.metadata.name -}}
+            {{- $namespace := $xr.metadata.namespace -}}
+            {{- $clusterExternalName := default $name $params.namePrefix -}}
+            {{- $connectionSecretName := printf "%s-db-connection" $name -}}
+            {{- $cluster := index .observed.resources "aws-cluster" | default dict -}}
+            {{- $clusterEndpoint := dig "resource" "status" "atProvider" "endpoint" "" $cluster -}}
+            {{- $readerEndpoint := dig "resource" "status" "atProvider" "readerEndpoint" "" $cluster -}}
+            {{- $clusterPort := dig "resource" "status" "atProvider" "port" 5432 $cluster -}}
+            {{- $totalInstances := add1 (int (default 0 $params.readReplicas)) -}}
+            apiVersion: devops-autopilot-crossplane-packages.io/v1alpha1
+            kind: XDatabase
+            status:
+              provider: aws
+              endpoint: {{ $clusterEndpoint | quote }}
+              readerEndpoint: {{ $readerEndpoint | quote }}
+              port: {{ $clusterPort }}
+              databaseName: {{ $params.databaseName | quote }}
+              adminUsername: {{ $params.adminUsername | quote }}
+              connectionSecretName: {{ $connectionSecretName | quote }}
+            ---
+            apiVersion: rds.aws.upbound.io/v1beta1
+            kind: Cluster
+            metadata:
+              name: {{ printf "%s-aws-cluster" $name }}
+              annotations:
+                {{ setResourceNameAnnotation "aws-cluster" }}
+                crossplane.io/external-name: {{ $clusterExternalName | quote }}
+            spec:
+              managementPolicies:
+            {{ toYaml (default (list "*") $xr.spec.managementPolicies) | indent 4 }}
+              forProvider:
+                region: {{ $params.region | quote }}
+                engine: aurora-postgresql
+                engineMode: provisioned
+                engineVersion: {{ default "16.3" $params.engineVersion | quote }}
+                databaseName: {{ $params.databaseName | quote }}
+                masterUsername: {{ $params.adminUsername | quote }}
+                masterPasswordSecretRef:
+                  namespace: {{ $namespace | quote }}
+                  name: {{ $params.adminPasswordSecretName | quote }}
+                  key: password
+                backupRetentionPeriod: {{ default 7 $params.backupRetentionDays }}
+                storageEncrypted: true
+                skipFinalSnapshot: true
+                applyImmediately: true
+                tags:
+            {{ toYaml (default dict $params.tags) | indent 8 }}
+              providerConfigRef:
+                name: {{ $params.cloudProviderConfigRef | quote }}
+              writeConnectionSecretToRef:
+                namespace: {{ $namespace | quote }}
+                name: {{ $connectionSecretName | quote }}
+            {{- range $i := until $totalInstances }}
+            ---
+            apiVersion: rds.aws.upbound.io/v1beta1
+            kind: ClusterInstance
+            metadata:
+              name: {{ printf "%s-aws-instance-%d" $name $i }}
+              annotations:
+                {{ setResourceNameAnnotation (printf "aws-instance-%d" $i) }}
+                crossplane.io/external-name: {{ printf "%s-%d" $clusterExternalName $i | quote }}
+            spec:
+              managementPolicies:
+            {{ toYaml (default (list "*") $xr.spec.managementPolicies) | indent 4 }}
+              forProvider:
+                region: {{ $params.region | quote }}
+                clusterIdentifierSelector:
+                  matchControllerRef: true
+                identifier: {{ printf "%s-%d" $clusterExternalName $i | quote }}
+                instanceClass: {{ default "db.t4g.medium" $params.awsInstanceClass | quote }}
+                engine: aurora-postgresql
+                engineVersion: {{ default "16.3" $params.engineVersion | quote }}
+                publiclyAccessible: {{ default false $params.publicAccess }}
+                applyImmediately: true
+                tags:
+            {{ toYaml (default dict $params.tags) | indent 8 }}
+              providerConfigRef:
+                name: {{ $params.cloudProviderConfigRef | quote }}
+            {{- end }}
+            ---
+            apiVersion: v1
+            kind: ConfigMap
+            metadata:
+              name: {{ printf "%s-database" $name }}
+              namespace: {{ $namespace | quote }}
+              annotations:
+                {{ setResourceNameAnnotation "aws-database-config" }}
+            data:
+              provider: aws
+              endpoint: {{ $clusterEndpoint | quote }}
+              readerEndpoint: {{ $readerEndpoint | quote }}
+              port: {{ $clusterPort | toString | quote }}
+              databaseName: {{ $params.databaseName | quote }}
+              adminUsername: {{ $params.adminUsername | quote }}
+              connectionSecretName: {{ $connectionSecretName | quote }}
+    - step: detect-ready-resources
+      functionRef:
+        name: function-auto-ready
